@@ -1,6 +1,7 @@
 # Matryoshka
 
-This repository contains the material to run the experiments for the Matryoshka paper.
+This repository contains the material to run the experiments for the Matryoshka paper, which explores nested parallelism in distributed dataflow systems, such as Spark:
+<https://www.researchgate.net/publication/350021175_The_Power_of_Nested_Parallelism_in_Big_Data_Processing_--_Hitting_Three_Flies_with_One_Slap>
 
 Build with `mvn clean package -DskipTests`
 
