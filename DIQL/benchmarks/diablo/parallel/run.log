@@ -1,0 +1,167 @@
+Number of cores: 24
+*** 1000000000  61035.16 MB
+2.499954323065583E10
+2.499954323065564E10
+2.4999543230655533E10
+2.4999543230655594E10
+**** ConditionalSumParallel run time: 9.406 secs
+*** 500000000  20504.00 MB
+false
+false
+false
+false
+**** EqualParallel run time: 8.27 secs
+false
+false
+false
+false
+**** StringMatchParallel run time: 6.912 secs
+*** 50000000  2050.40 MB
+4999759
+4999759
+4999759
+4999759
+**** WordCountParallel run time: 29.515 secs
+*** 50000000  3337.86 MB
+256
+256
+256
+256
+256
+256
+256
+256
+256
+256
+256
+256
+**** HistogramParallel run time: 7.106 secs
+*** 100000000  13923.65 MB
+0.9997964788083479 -9.89784502642999
+0.9997964788083433 -9.89784502642675
+0.9997964788083501 -9.8978450264284
+0.9997964788083471 -9.89784502642567
+**** LinearRegressionParallel run time: 8.631 secs
+*** 50000000  2765.66 MB
+4999795
+4999795
+4999795
+4999795
+**** GroupByParallel run time: 30.578 secs
+*** 3500 3500  2710.34 MB
+12250000
+12250000
+12250000
+12250000
+**** AddParallel run time: 28.858 secs
+*** 420 420  39.03 MB
+176400
+176400
+176400
+176400
+**** MultiplyParallel run time: 19.726 secs
+*** 1500000 1500000  278.95 MB
+1500000
+1500000
+1500000
+1500000
+**** PagerankParallel run time: 9.487 secs
+*** 500000  69.62 MB
+100
+100
+100
+100
+**** KMeansParallel run time: 27.236 secs
+*** 980 980  209.74 MB
+1960
+1960
+1960
+1960
+1960
+1960
+1960
+1960
+**** FactorizationParallel run time: 9.63 secs
+*** 1000000000  61035.16 MB
+2.4999199537972057E10
+2.4999199537972057E10
+2.4999199537972057E10
+2.4999199537972057E10
+**** ConditionalSumSequential run time: 39.22 secs
+*** 500000000  20504.00 MB
+false
+false
+false
+false
+**** EqualSequential run time: 36.226 secs
+false
+false
+false
+false
+**** StringMatchSequential run time: 31.939 secs
+*** 50000000  2050.40 MB
+4999752
+4999752
+4999752
+4999752
+**** WordCountSequential run time: 97.694 secs
+*** 50000000  3433.23 MB
+256
+256
+256
+256
+256
+256
+256
+256
+256
+256
+256
+256
+**** HistogramSequential run time: 31.461 secs
+*** 100000000  13923.65 MB
+0.9997985644569065 -9.89857757673957
+0.9997985644569065 -9.89857757673957
+0.9997985644569065 -9.89857757673957
+0.9997985644569065 -9.89857757673957
+**** LinearRegressionSequential run time: 25.217 secs
+*** 50000000  2861.02 MB
+4999776
+4999776
+4999776
+4999776
+**** GroupBySequential run time: 73.782 secs
+*** 3500 3500  2710.34 MB
+12250000
+12250000
+12250000
+12250000
+**** AddSequential run time: 154.049 secs
+*** 420 420  39.03 MB
+176400
+176400
+176400
+176400
+**** MultiplySequential run time: 179.288 secs
+*** 1500000 1500000  278.95 MB
+1500000
+1500000
+1500000
+1500000
+**** PagerankSequential run time: 37.145 secs
+*** 500000  69.62 MB
+100
+100
+100
+100
+**** KMeansSequential run time: 30.459 secs
+*** 980 980  209.74 MB
+1960
+1960
+1960
+1960
+1960
+1960
+1960
+1960
+**** FactorizationSequential run time: 24.341 secs
