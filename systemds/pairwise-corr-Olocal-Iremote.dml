@@ -1,0 +1,21 @@
+# systemds pairwise-corr.dml -nvargs input="./data/input" output="./data/output"
+#
+# Copy-paste from this paper: https://dl.acm.org/doi/pdf/10.14778/2732286.2732292
+
+D = read($input);
+m = nrow(D);
+n = ncol(D);
+R = matrix(0, rows=n, cols=n);
+parfor( i in 1:(n-1), mode=LOCAL, opt=NONE, log=ALL ) {
+    X = D[ ,i];
+    m2X = centralMoment(X,2);
+    sigmaX = sqrt( m2X*(m/(m-1.0)) );
+    #for( j in (i+1):n ) {
+    parfor( j in (i+1):n, mode=REMOTE_SPARK, opt=NONE, log=ALL ) {
+        Y = D[ ,j];
+        m2Y = centralMoment(Y,2);
+        sigmaY = sqrt( m2Y*(m/(m-1.0)) );
+        R[i,j] = cov(X,Y) / (sigmaX*sigmaY);
+    }
+}
+write(R, $output);

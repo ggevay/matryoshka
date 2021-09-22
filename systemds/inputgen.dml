@@ -1,0 +1,4 @@
+# systemds inputgen.dml -nvargs sparsity=0.1 input="./data/input" numRows=1000 numCols=1000
+
+D = rand(rows = $numRows, cols = $numCols, sparsity=$sparsity)
+write(D, $input)
