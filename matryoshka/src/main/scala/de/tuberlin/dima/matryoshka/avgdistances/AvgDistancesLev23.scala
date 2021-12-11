@@ -1,10 +1,10 @@
 package de.tuberlin.dima.matryoshka.avgdistances
 
 import Util._
-import de.tuberlin.dima.matryoshka.lifting._
 import de.tuberlin.dima.matryoshka.util.RDDSplitting._
 import de.tuberlin.dima.matryoshka.util.Util._
-import de.tuberlin.dima.matryoshka.lifting.LiftedScalar
+import de.tuberlin.dima.matryoshka.lifting.{LoopContext, _}
+import de.tuberlin.dima.matryoshka.lifting.{LiftedRDD, LiftedScalar}
 import org.apache.spark.SparkContext
 import org.apache.spark.storage.StorageLevel
 
@@ -74,7 +74,7 @@ object AvgDistancesLev23 {
                 .map{case (_, (_, u)) => (u,())}
                 .leftAntiJoin(dist)
                 .map(_._1)
-            newFront.dPersist()
+            newFront.defaultPersist()
             loopContext.registerForUnpersist(newFront)
             val toAddToDist = newFront.withClosure(stepNum)//.map{case (v: VID, stepNum: Int) => (v, stepNum)} // would be noop
             toAddToDists += toAddToDist

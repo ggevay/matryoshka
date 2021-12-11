@@ -6,6 +6,7 @@ import de.tuberlin.dima.matryoshka.util.Util._
 
 import scala.reflect.ClassTag
 
+// Called InnerScalar in the paper
 // L is a primary key
 class LiftedScalar[L: ClassTag, T: ClassTag](val rdd: RDD[(L,T)])(implicit val liftingContext: LiftingContext[L]) {
 
@@ -25,7 +26,7 @@ class LiftedScalar[L: ClassTag, T: ClassTag](val rdd: RDD[(L,T)])(implicit val l
     rdd.force()
   }
 
-  def dPersist(): LiftedScalar[L,T] = {
+  def defaultPersist(): LiftedScalar[L,T] = {
     rdd.defaultPersist()
   }
 
@@ -52,10 +53,13 @@ class LiftedScalar[L: ClassTag, T: ClassTag](val rdd: RDD[(L,T)])(implicit val l
     this.rdd.cogroup(other.rdd, numPartitions = liftingContext.defaultLiftedScalarParallelism).flatMapValues{case (it1, it2) =>
       val it1Size = it1.size
       val it2Size = it2.size
-      if (it1Size != 1 || it2Size != 1)
-        // Hm, actually, it is ok if this does not hold in the case where one of the merge inputs is in a doWhile, and the other comes from outside.
+      if (it1Size != 1 || it2Size != 1) {
+        // Hm, actually, it is ok if this does not hold in some cases:
+        //  - where one of the merge inputs is in a doWhile, and the other comes from outside.
+        //  - where one of the inputs had a filterOnOuter
         // So I might comment this out later when I cannot avoid such a merge call.
         throw new RuntimeException(s"Bug: LiftedScalar.merge found non-matching lift ID sets.\nit1: $it1,\nit2: $it2,")
+      }
       Seq((it1.head, it2.head))
     }
   }
@@ -105,6 +109,10 @@ object LiftedScalar {
 
   def binaryScalarOp[L: ClassTag, T1: ClassTag, T2: ClassTag, R: ClassTag](in1: LiftedScalar[L,T1], in2: LiftedScalar[L,T2])(op: (T1, T2) => R): LiftedScalar[L,R] = {
     (in1 merge in2).unaryOp(x => op(x._1, x._2))
+  }
+
+  def ternaryScalarOp[L: ClassTag, T1: ClassTag, T2: ClassTag, T3: ClassTag, R: ClassTag](in1: LiftedScalar[L,T1], in2: LiftedScalar[L,T2], in3: LiftedScalar[L,T3])(op: (T1, T2, T3) => R): LiftedScalar[L,R] = {
+    (in1 merge in2 merge in3).unaryOp{case ((x, y), z) => op(x, y, z)}
   }
 
   implicit class TwiceLiftedScalarExtensions[L1: ClassTag, L2: ClassTag, T: ClassTag](lls: LiftedScalar[(L1, L2), T]) {

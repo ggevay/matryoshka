@@ -35,7 +35,7 @@ package object lifting {
       liftedMapFunc(rdd.liftToScalar).unliftToRDD
     }
 
-    // This overload creates lift IDs by itself. (groupByIntoNestedRDD creates them by a UDF)
+    // This overload creates lift IDs by itself. (groupByIntoFlattenedRDD creates them by a UDF)
     private[lifting] def liftToScalar: LiftedScalar[Long, T] = {
       val rddWithLiftIDs = rdd.zipWithUniqueId().map {case (x,id) => (id,x)}.autoCoalesceAndPersist()
       implicit val ilc: LiftingContext[Long] = new LiftingContext(rddWithLiftIDs.map(_._1))
@@ -46,14 +46,14 @@ package object lifting {
       new CartesianRDDHackedLocality(rdd.sparkContext, rdd, other)
     }
 
-    def groupByIntoNestedRDD[K: ClassTag](func: T => K): FlattenedRDD[K,K,T] = FlattenedRDD.fromGrouping(rdd, func)
+    def groupByIntoFlattenedRDD[K: ClassTag](func: T => K): FlattenedRDD[K,K,T] = FlattenedRDD.fromGrouping(rdd, func)
   }
 
   implicit class PairRDDExtensions[K: ClassTag, V: ClassTag](rdd: RDD[(K,V)]) {
 
-    def groupByKeyIntoNestedRDD(): FlattenedRDD[K,K,V] = FlattenedRDD.fromGrouping(rdd)
+    def groupByKeyIntoFlattenedRDD(): FlattenedRDD[K,K,V] = FlattenedRDD.fromGrouping(rdd)
 
-    def cogroupIntoNestedRDD[W: ClassTag](other: RDD[(K,W)]): FlattenedRDDBinary[K,K,V,W] = FlattenedRDDBinary.fromGrouping(rdd, other)
+    def cogroupIntoFlattenedRDD[W: ClassTag](other: RDD[(K,W)]): FlattenedRDDBinary[K,K,V,W] = FlattenedRDDBinary.fromGrouping(rdd, other)
 
     def filterValues(f: V => Boolean): RDD[(K,V)] = {
       rdd.mapPartitions(iter => iter.filter { case (_, v) => f(v) }, preservesPartitioning = true)
@@ -103,7 +103,7 @@ package object lifting {
     val sc = initBodyIns.head.sparkContext
     var bodyIns = initBodyIns
     var moreAny = true
-    var res = Seq.fill(initBodyIns.length)(sc.emptyRDD[(L, Any)])
+    val resToBeUnioned = Seq.fill(initBodyIns.length)(new ArrayBuffer[RDD[(L, Any)]]())
     var bodyOutsWithCond = Seq.fill(initBodyIns.length)(sc.emptyRDD[(L,(Any, Boolean))])
     var oldBodyOutsWithCond: Seq[RDD[(L,(Any, Boolean))]] = null
     var it = 0
@@ -128,7 +128,7 @@ package object lifting {
           bodyOutsWithCond = bodyOuts.map(bodyOut => bodyOut.broadcastJoinLeftToRightForeignKey[Boolean](condMapBr)
             .defaultPersist())
         case Repartition =>
-          cond.dPersist()
+          cond.defaultPersist()
           cond.checkNumParts()
           bodyOutsWithCond = bodyOuts.map(bodyOut => bodyOut.join(cond.rdd, bodyOut.getNumPartitions)
             .defaultPersist())
@@ -165,7 +165,7 @@ package object lifting {
       if (condMapBr != null)
         condMapBr.unpersist()
 
-      res = (res zip toAddToRes) map {case (a,b) => a union b}
+      (resToBeUnioned zip toAddToRes).foreach {case (abuf, rdd) => abuf += rdd}
 
       decideLBLSJoinStrategy(cond) match {
         case Broadcast =>
@@ -180,8 +180,8 @@ package object lifting {
     } while (moreAny)
     bodyOutsWithCond.foreach(_.unpersist())
     // todo: unpersist all toAddToRes somehow.
-    //  We could persist and force res, but then the question is where do we unpersist res...
-    res
+    //  We could persist and force the result res, but then the question is where do we unpersist the result...
+    resToBeUnioned.map(abuf => sc.union(abuf))
   }
 
   def doWhile3RddRddScalar[L: ClassTag, T1: ClassTag, T2: ClassTag, T3: ClassTag]

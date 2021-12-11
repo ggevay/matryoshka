@@ -1,8 +1,9 @@
 package de.tuberlin.dima.matryoshka.bouncerate
 
 import Util._
-import de.tuberlin.dima.matryoshka.lifting._
 import de.tuberlin.dima.matryoshka.util.Util._
+import de.tuberlin.dima.matryoshka.lifting._
+import de.tuberlin.dima.matryoshka.lifting.LiftedScalar
 import org.apache.spark.SparkContext
 
 object BounceRateLev12 {
@@ -35,7 +36,7 @@ object BounceRateLev12 {
 
     val stopWatch = new StopWatch
 
-    val grouped = visitsAll.defaultPersist().groupByKeyIntoNestedRDD()
+    val grouped = visitsAll.defaultPersist().groupByKeyIntoFlattenedRDD()
 
     val res = grouped.mapToScalar[Double] {case (gr, visits) =>
       visits.rdd.defaultPersist()

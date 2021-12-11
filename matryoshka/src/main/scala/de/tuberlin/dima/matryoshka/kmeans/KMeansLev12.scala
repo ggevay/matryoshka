@@ -1,7 +1,7 @@
 package de.tuberlin.dima.matryoshka.kmeans
 
-import de.tuberlin.dima.matryoshka.lifting.{LiftedRDD, LiftedScalar}
 import de.tuberlin.dima.matryoshka.lifting.LiftedScalar
+import de.tuberlin.dima.matryoshka.lifting.{LiftedRDD, LiftedScalar}
 import org.apache.spark
 import org.apache.spark._
 import org.apache.spark.ml.linalg.{DenseVector, Vectors}
@@ -86,7 +86,7 @@ object KMeansLev12 {
           case BroadcastRight =>
             means.rdd.repartition(sc.defaultParallelism).cartesianBroadcastRight(points, loopContext)
           case CartesianRDD =>
-            means.dPersist()
+            means.defaultPersist()
             loopContext.registerForUnpersist(means)
             means.rdd.cartesian(points)
           case Optimizer =>
@@ -97,7 +97,7 @@ object KMeansLev12 {
               means.rdd.cartesianBroadcastLeft(points, loopContext) // the common case
             } else {
               relAssert(!autoCoalesceEnabled(sc) || means.rdd.getNumPartitions > 1)
-              means.dPersist()
+              means.defaultPersist()
               loopContext.registerForUnpersist(means)
               val leftSize = means.rdd.estimateSize()
               val rightSize = points.estimateSize()
@@ -113,7 +113,7 @@ object KMeansLev12 {
           (liftID, (means.minBy(m => Vectors.sqdist(point, m)), point))
         })
 
-        assignment.dPersist()
+        assignment.defaultPersist()
         loopContext.registerForUnpersist(assignment.rdd)
 
         val newMeans = assignment.aggregateByKeyNoMapSideCombine((Vectors.zeros(dim).asInstanceOf[DenseVector], 0))(
@@ -131,7 +131,7 @@ object KMeansLev12 {
 //          (sumDistance, newSumDistance) => Math.abs(sumDistance - newSumDistance) > eps)
 
         val newIt = it.unaryOp(_ + 1)
-        newIt.dPersist()
+        newIt.defaultPersist()
         loopContext.registerForUnpersist(newIt.rdd)
         val cond = newIt.unaryOp(_ <= numSteps)
 

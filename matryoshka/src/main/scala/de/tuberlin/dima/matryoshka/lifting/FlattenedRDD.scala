@@ -8,6 +8,7 @@ import org.apache.spark.storage.StorageLevel
 
 import scala.reflect.ClassTag
 
+// Called NestedBag in the paper
 // Simulates an RDD[(O,RDD[I])], with lifting id L
 class FlattenedRDD[L: ClassTag, O: ClassTag, I: ClassTag](val outer: LiftedScalar[L,O], val inner: LiftedRDD[L,I])(implicit val liftingContext: LiftingContext[L]) {
 
@@ -24,6 +25,21 @@ class FlattenedRDD[L: ClassTag, O: ClassTag, I: ClassTag](val outer: LiftedScala
     liftedMapFunc(outer, inner).unliftToRDD
   }
 
+  def defaultPersist(): FlattenedRDD[L,O,I] = {
+    outer.defaultPersist()
+    inner.defaultPersist()
+    this
+  }
+
+  // For now, this assumes that the bases are small (can be broadcasted)
+  def cartesian[L2: ClassTag, O2: ClassTag, I2: ClassTag](other: FlattenedRDD[L2,O2,I2]): FlattenedRDDBinary[(L, L2), (O, O2), I, I2] = {
+    implicit val crossedLiftingContext: LiftingContext[(L, L2)] =
+      new LiftingContext((liftingContext.base cartesianBroadcastRight other.liftingContext.base).autoCoalesceAndPersist())
+    new FlattenedRDDBinary[(L, L2), (O, O2), I, I2](
+      (outer.rdd cartesianBroadcastRight other.outer.rdd).map { case ((l1, o1), (l2, o2)) => ((l1, l2), (o1, o2)) }, //.autoCoalesceAndPersist(),
+      (inner.rdd cartesianBroadcastRight other.liftingContext.base).map { case ((l1, i1), l2) => ((l1, l2), i1) }, //.autoCoalesceAndPersist(),
+      (liftingContext.base cartesianBroadcastLeft other.inner.rdd).map { case (l1, (l2, i2)) => ((l1, l2), i2) }) //.autoCoalesceAndPersist())
+  }
 }
 
 object FlattenedRDD {

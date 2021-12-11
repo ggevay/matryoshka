@@ -1,8 +1,10 @@
 package de.tuberlin.dima.matryoshka.pagerank
 
-import de.tuberlin.dima.matryoshka.lifting._
-import de.tuberlin.dima.matryoshka.pagerank.Util.{getPageRankRandomInput, getPageRankSkewedRandomInput}
+import de.tuberlin.dima.matryoshka.pagerank.Util._
 import de.tuberlin.dima.matryoshka.util.Util._
+import de.tuberlin.dima.matryoshka.lifting._
+import de.tuberlin.dima.matryoshka.lifting.LiftedScalar._
+import de.tuberlin.dima.matryoshka.lifting.LiftedRDD._
 import org.apache.spark.broadcast.Broadcast
 import org.apache.spark.{SparkConf, SparkContext}
 
@@ -58,15 +60,15 @@ object PageRankLev12 {
 
 
 
-    val grouped = edgesAll.defaultPersist().groupByIntoNestedRDD(_._1)
+    val grouped = edgesAll.defaultPersist().groupByIntoFlattenedRDD(_._1)
 
     val res = grouped.mapToScalar[Long]{case (day, edges00) =>
 
       val edges0 = edges00.map{case (day,from,to) => (from,to)}
-      edges0.dPersist()
+      edges0.defaultPersist()
 
       val pages = edges0.flatMap{case (a,b) => Seq(a,b)}.distinct(false)
-      pages.dPersist()
+      pages.defaultPersist()
 
       val loopEdges = pages.map(x => (x,x))
 
@@ -91,14 +93,14 @@ object PageRankLev12 {
       decideLBLSJoinStrategy(jump) match {
         case Broadcast => jumpBr = jump.prepareForBroadcast()
         case Repartition =>
-          jump.dPersist()
+          jump.defaultPersist()
           jump.force()
       }
 
       //var PR = pages.map(x => (x, initWeight))
       // initWeight should, in theory, be unpersisted later, but it's small, so it's ok
       val initPR = pages.withClosure(initWeight)//.map{case (x, w) => (x, w)}
-      initPR.dPersist()
+      initPR.defaultPersist()
 
       edgesWithDeg.force()
       edgesAll.unpersist()
@@ -120,7 +122,7 @@ object PageRankLev12 {
             case Repartition => msgsReduced.withClosure(jump) // also cached, but no different function needed between cached and non-cached in this case
           }
         val newPR = msgsReducedWithClosure.map{case ((id, v),jump) => (id, d*v+jump)}
-        newPR.dPersist() // Needed, because the merge that creates bodyOut_more depends on this through both its inputs
+        newPR.defaultPersist() // Needed, because the merge that creates bodyOut_more depends on this through both its inputs
         loopContext.registerForUnpersist(newPR.rdd)
 
         val innerDelta = PR.join(newPR).map{case (k,(oldval, newval)) => scala.math.abs(oldval-newval)}.sum

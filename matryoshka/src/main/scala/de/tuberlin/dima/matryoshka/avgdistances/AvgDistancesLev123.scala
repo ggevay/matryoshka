@@ -1,8 +1,8 @@
 package de.tuberlin.dima.matryoshka.avgdistances
 
 import Util._
-import de.tuberlin.dima.matryoshka.lifting.{LiftedRDD, LiftedScalar}
 import de.tuberlin.dima.matryoshka.lifting._
+import de.tuberlin.dima.matryoshka.lifting.{LiftedRDD, LiftedScalar}
 import de.tuberlin.dima.matryoshka.util.Util._
 import org.apache.spark.SparkContext
 import org.apache.spark.rdd.RDD
@@ -51,7 +51,7 @@ object AvgDistancesLev123 {
     // Add the component IDs to the edges
     val edges = vertices.map{case (cid, vid) => (vid, cid)}.join(edges0).map{case (v1, (cid, v2)) => (cid, (v1, v2))}
 
-    val comps = vertices.cogroupIntoNestedRDD(edges)
+    val comps = vertices.cogroupIntoFlattenedRDD(edges)
 
     val res: RDD[(CID, Double)] = comps.mapToScalar ((cid: LiftedScalar[CID,CID], vs: LiftedRDD[CID,VID], es0: LiftedRDD[CID,(VID,VID)]) => {
       val sources = vs.sample(withReplacement = false, sampleSize, new Random(42).nextLong())
@@ -68,7 +68,7 @@ object AvgDistancesLev123 {
                 .map{case (_, (_, u)) => (u,())}
                 .leftAntiJoin(dist)
                 .map(_._1)
-            newFront.dPersist()
+            newFront.defaultPersist()
             loopContext.registerForUnpersist(newFront)
             val toAddToDist = newFront.withClosure(stepNum)//.map{case (v: VID, stepNum: Int) => (v, stepNum)} // would be noop
             //toAddToDists += toAddToDist // No need for this, as we run the loop only once

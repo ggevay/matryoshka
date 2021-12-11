@@ -1,6 +1,7 @@
 package de.tuberlin.dima.matryoshka.util
 
-import de.tuberlin.dima.matryoshka.lifting._
+import de.tuberlin.dima.matryoshka.lifting.{LiftedScalar, LoopContext}
+import org.apache.hadoop.fs.Path
 import org.apache.spark.Partitioner.defaultPartitioner
 import org.apache.spark.api.java.StorageLevels
 import org.apache.spark.broadcast.Broadcast
@@ -10,16 +11,20 @@ import org.apache.spark.rdd.RDD
 import org.apache.spark.storage.StorageLevel
 import org.apache.spark.util.SizeEstimator
 
+import java.net.URI
+import scala.collection.mutable
 import scala.reflect.ClassTag
 import scala.util.Random
 
 object Util {
 
-  val local = true
-
   def sparkSetup(caller: Any): SparkContext = {
     val conf = new SparkConf().setAppName(caller.getClass.getSimpleName)
       .set("spark.serializer", "org.apache.spark.serializer.KryoSerializer")
+
+    val local = !conf.contains("spark.master") || conf.get("spark.master").contains("local")
+    println("local: " + local)
+
     if (local) {
       conf.setMaster("local[10]")
       conf.set("spark.local.dir", "TOBEFILLED")
@@ -30,8 +35,9 @@ object Util {
 
     if (local)
       sc.setCheckpointDir("TOBEFILLED")
-    else
+    else {
       sc.setCheckpointDir("hdfs://TOBEFILLED")
+    }
 
     println("=== sc.defaultParallelism: " + sc.defaultParallelism)
 
@@ -166,6 +172,22 @@ object Util {
       val set = other.keys.toSet
       in.filter{case (k,_) => !set.contains(k)}
     }
+
+    def fullOuterJoin[W](other: Seq[(K, W)]): Seq[(K, (Option[V], Option[W]))] = {
+      val left = in
+      val right = other
+      val leftKeys = left.keys.toSet
+      val rightKeys = right.keys.toSet
+
+      val inner = (left join right)
+        .map{case (k,(v,w)) => (k, (Some(v).asInstanceOf[Option[V]], Some(w).asInstanceOf[Option[W]]))}
+      val leftAnti = left.filterNot{case (k,_) => rightKeys.contains(k)}
+        .map{case (k,v) => (k, (Some(v).asInstanceOf[Option[V]], None.asInstanceOf[Option[W]]))}
+      val rightAnti = right.filterNot{case (k,_) => leftKeys.contains(k)}
+        .map{case (k,w) => (k, (None.asInstanceOf[Option[V]], Some(w).asInstanceOf[Option[W]]))}
+
+      leftAnti ++ inner ++ rightAnti
+    }
   }
 
   val autoCoalescePartitionSize = 1000
@@ -226,12 +248,13 @@ object Util {
       }
     }
 
-    def cartesianBroadcastLeft[U: ClassTag, L: ClassTag](right: RDD[U], loopContext: LoopContext[L]): RDD[(T, U)] = {
+    def cartesianBroadcastLeft[U: ClassTag](right: RDD[U], loopContext: LoopContext[_] = null): RDD[(T, U)] = {
       println("cartesianBroadcastLeft")
       val sc = in.sparkContext
       val left = in
       val brLeft = sc.broadcast(left.collect())
-      loopContext.registerForUnpersist(brLeft)
+      if (loopContext != null)
+        loopContext.registerForUnpersist(brLeft)
       right.mapPartitions(rightIt => {
         val rightArr = rightIt.toArray
         val crossedArr = for(x <- brLeft.value; y <- rightArr) yield (x,y)
@@ -239,12 +262,13 @@ object Util {
       })
     }
 
-    def cartesianBroadcastRight[U: ClassTag, L: ClassTag](right: RDD[U], loopContext: LoopContext[L]): RDD[(T, U)] = {
+    def cartesianBroadcastRight[U: ClassTag](right: RDD[U], loopContext: LoopContext[_] = null): RDD[(T, U)] = {
       println("cartesianBroadcastRight")
       val sc = in.sparkContext
       val left = in
       val brRight = sc.broadcast(right.collect())
-      loopContext.registerForUnpersist(brRight)
+      if (loopContext != null)
+        loopContext.registerForUnpersist(brRight)
       left.mapPartitions(leftIt => {
         val leftArr = leftIt.toArray
         val crossedArr = for(x <- leftArr; y <- brRight.value) yield (x,y)
@@ -295,12 +319,30 @@ object Util {
       rdd.map{case (k,v) => (k, (v, br.value(k)))}
     }
 
-    // Sames as above, but with an already collected map
+    // Same as above, but with an already collected map (see collectForBroadcast)
     def broadcastJoinLeftToRightForeignKey[W: ClassTag](br: Broadcast[scala.collection.Map[K,W]]): RDD[(K,(V,W))] = {
       rdd.map{case (k,v) => (k, (v, br.value(k)))}
     }
 
+    // Join, with right broadcasted. Assumes that K is primary key in right.
+    def broadcastJoinRightPrimaryKey[W: ClassTag](br: Broadcast[scala.collection.Map[K,W]]): RDD[(K,(V,W))] = {
+      rdd.flatMap{case (k,v) =>
+        br.value.get(k) match {
+          case Some(w) => Seq((k, (v, w)))
+          case None => Seq.empty
+        }
+      }
+    }
+
     def castValuesTo[T]: RDD[(K, T)] = rdd.mapValues(x => x.asInstanceOf[T])
+  }
+
+  def collectForBroadcast[L: ClassTag, S: ClassTag](ls: LiftedScalar[L,S])(implicit sc: SparkContext): Broadcast[collection.Map[L, S]] = {
+    val lsColl = ls.rdd.collect()
+    val lsMap = new mutable.HashMap[L, S]
+    lsMap.sizeHint(lsColl.length)
+    lsColl.foreach { pair => lsMap.put(pair._1, pair._2) }
+    sc.broadcast(lsMap: scala.collection.Map[L, S])
   }
 
   var manualGCTime = 0d
@@ -335,6 +377,13 @@ object Util {
     }
   }
 
+  def deleteHDFSPathIfExists(pathStr: String)(implicit sc: SparkContext): Unit = {
+    val fs = org.apache.hadoop.fs.FileSystem.get(new URI(pathStr), sc.hadoopConfiguration)
+    val path = new Path(pathStr)
+    if (fs.exists(path))
+      fs.delete(path, true)
+  }
+
   object LBLSJoinStrategy extends Enumeration {
     type LBLSJoinStrategy = Value
     val Broadcast, Repartition, Optimizer = Value
@@ -344,13 +393,19 @@ object Util {
   var LBLSJoinStrategyConfig: LBLSJoinStrategy = Optimizer
 
   def decideLBLSJoinStrategy(ls: LiftedScalar[_,_]): LBLSJoinStrategy = {
+    decideLBLSJoinStrategy(ls.liftingContext.liftedScalarElemCount, ls.rdd.sparkContext.defaultParallelism)
+  }
+
+  def decideLBLSJoinStrategy(elemCount: Long, defaultParallelism: Long): LBLSJoinStrategy = {
+    //val threshold = defaultParallelism // ez volt a regi opt kiserletnel, de az uj beallitas is konzisztens a plottal
+    val threshold = Math.max(10000, defaultParallelism)
     LBLSJoinStrategyConfig match {
       case Optimizer =>
-        if (ls.liftingContext.liftedScalarElemCount < ls.rdd.sparkContext.defaultParallelism) {
-          println(s"decideLBLSJoinStrategy decided Broadcast (${ls.liftingContext.liftedScalarElemCount} < ${ls.rdd.sparkContext.defaultParallelism})")
+        if (elemCount < threshold) {
+          println(s"decideLBLSJoinStrategy decided Broadcast (${elemCount} < ${threshold})")
           Broadcast
         } else {
-          println(s"decideLBLSJoinStrategy decided Repartition (${ls.liftingContext.liftedScalarElemCount} >= ${ls.rdd.sparkContext.defaultParallelism})")
+          println(s"decideLBLSJoinStrategy decided Repartition (${elemCount} >= ${threshold})")
           Repartition
         }
       case cfg =>

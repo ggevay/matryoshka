@@ -11,6 +11,7 @@ import org.apache.spark.util.Utils
 
 import scala.reflect.ClassTag
 
+// Called InnerBag in the paper
 class LiftedRDD[L: ClassTag, T: ClassTag](val rdd: RDD[(L,T)])(implicit val liftingContext: LiftingContext[L]) {
 
   val ilc: LiftingContext[L] = liftingContext
@@ -66,6 +67,7 @@ class LiftedRDD[L: ClassTag, T: ClassTag](val rdd: RDD[(L,T)])(implicit val lift
   }
 
   // Just a count, but assumes the bag is not empty (for any lift ID)
+  // (Doesn't need a LoopContext, even when called inside a loop, because addEmpties is what needs the LoopContext in other places.)
   def countAssumeNonEmpty(): LiftedScalar[L,Long] = {
     this.map(_ => 1L).rdd.reduceByKey(_+_, ilc.defaultLiftedScalarParallelism)
   }
@@ -104,10 +106,6 @@ class LiftedRDD[L: ClassTag, T: ClassTag](val rdd: RDD[(L,T)])(implicit val lift
     //  - A more critical issue is that the repartition join makes a mess if the join key cardinality is
     //    lower than the default parallelism, because then we end up with a result rdd that has only that many non-empty
     //    partitions. And this can very often happen here, when numInner is small.
-    // So, ideally, an optimizer would look at s.rdd, and if it's large (L is primary key, so enough to check the size)
-    // then repartition join, otherwise broadcast join. And the nice thing is that we can put the necessary info for
-    // this into the LiftingContext, and then no need to do extra operations here to check s.rdd.
-    // (For now, we just hardcode the join strategy.)
     import de.tuberlin.dima.matryoshka.util.Util.LBLSJoinStrategy._
     decideLBLSJoinStrategy(s) match {
       case Broadcast => rdd.broadcastJoinLeftToRightForeignKey(s.rdd)
@@ -142,7 +140,7 @@ class LiftedRDD[L: ClassTag, T: ClassTag](val rdd: RDD[(L,T)])(implicit val lift
     rdd.force()
   }
 
-  def dPersist(): LiftedRDD[L,T] = {
+  def defaultPersist(): LiftedRDD[L,T] = {
     rdd.defaultPersist()
   }
 }
@@ -220,6 +218,10 @@ object LiftedRDD {
       (pullInnerKey leftAntiJoin other.pullInnerKey)
         .pushInnerKey
     }
+
+    def fullOuterJoin[W: ClassTag](other: LiftedRDD[L, (K, W)]): LiftedRDD[L, (K, (Option[V], Option[W]))] = {
+      (pullInnerKey fullOuterJoin other.pullInnerKey).pushInnerKey
+    }
   }
 
   implicit class LiftedDoubleRDDExtensions[L: ClassTag](lrdd: LiftedRDD[L, Double]) {
@@ -231,7 +233,7 @@ object LiftedRDD {
     }
 
     def average(implicit loopContext: LoopContext[L] = null): LiftedScalar[L, Double] = {
-      lrdd.dPersist()
+      lrdd.defaultPersist()
       //lrdd.force() // I tried this locally, didn't give a measurable speedup
       if (loopContext != null) loopContext.registerForUnpersist(lrdd)
       LiftedScalar.binaryScalarOp(lrdd.sum, lrdd.countAssumeNonEmpty())((sum, count) => sum / count.toDouble)

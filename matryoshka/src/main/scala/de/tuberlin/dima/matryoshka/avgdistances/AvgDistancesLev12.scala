@@ -1,7 +1,6 @@
 package de.tuberlin.dima.matryoshka.avgdistances
 
 import Util._
-import de.tuberlin.dima.matryoshka.lifting.{LiftedRDD, LiftedScalar}
 import de.tuberlin.dima.matryoshka.util.Util._
 import de.tuberlin.dima.matryoshka.lifting._
 import org.apache.spark.SparkContext
@@ -51,7 +50,7 @@ object AvgDistancesLev12 {
     // Add the component IDs to the edges
     val edges = vertices.map{case (cid, vid) => (vid, cid)}.join(edges0).map{case (v1, (cid, v2)) => (cid, (v1, v2))}
 
-    val comps = vertices.cogroupIntoNestedRDD(edges)
+    val comps = vertices.cogroupIntoFlattenedRDD(edges)
 
     val res: RDD[(CID, Double)] = comps.mapToScalar ((cid: LiftedScalar[CID,CID], vs: LiftedRDD[CID,VID], es0: LiftedRDD[CID,(VID,VID)]) => {
       val sources = vs.sample(withReplacement = false, sampleSize, new Random(42).nextLong())
